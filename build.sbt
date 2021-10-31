@@ -4,10 +4,45 @@ import Dependencies.Version._
 import Utilities._
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
 
-ThisBuild / organization := "com.github.pureconfig"
+inThisBuild(
+  Seq(
+    // Use the same Scala 2.12 version in the root project as in subprojects
+    scalaVersion := scala212,
+    organization := "com.github.pureconfig",
+    releaseCrossBuild := true,
+    releaseTagComment := s"Release ${(ThisBuild / version).value}",
+    releaseCommitMessage := s"Set version to ${(ThisBuild / version).value}",
+    releaseNextCommitMessage := s"Set version to ${(ThisBuild / version).value}",
+    // redefine the release process due to https://github.com/sbt/sbt-release/issues/184
+    // and to append `sonatypeReleaseAll`
+    releaseProcess := Seq[ReleaseStep](
+      checkSnapshotDependencies,
+      inquireVersions,
+      runClean,
+      runTest,
+      setReleaseVersion,
+      commitReleaseVersion,
+      tagRelease,
+      releaseStepCommandAndRemaining("+publishSigned"),
+      releaseStepCommand("sonatypeBundleRelease"),
+      setNextVersion,
+      commitNextVersion,
+      pushChanges
+    ),
+    semanticdbEnabled := true,
+    semanticdbVersion := scalafixSemanticdb.revision,
+    scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.5.0"
+  )
+)
 
-// Enable the OrganizeImports Scalafix rule.
-ThisBuild / scalafixDependencies += "com.github.liancheng" %% "organize-imports" % "0.5.0"
+lazy val root = (project in file("."))
+  .settings(
+    // do not publish the root project
+    publish / skip := true,
+    scalafmtOnCompile := true,
+    scalafixOnCompile := true,
+    scalafixCheckAll := scalafixAll.toTask(" --check").value
+  )
 
 lazy val core = (project in file("core"))
   .enablePlugins(BoilerplatePlugin)
@@ -83,8 +118,6 @@ lazy val commonSettings = Seq(
     Developer("derekmorr", "Derek Morr", "morr.derek@gmail.com", url("https://github.com/derekmorr"))
   ),
 
-  scalaVersion := scala212,
-
   resolvers ++= Seq(Resolver.sonatypeRepo("releases"), Resolver.sonatypeRepo("snapshots")),
 
   crossVersionSharedSources(Compile / unmanagedSourceDirectories),
@@ -96,16 +129,6 @@ lazy val commonSettings = Seq(
 
   Compile / console / scalacOptions --= Seq("-Xfatal-warnings", "-Ywarn-unused-import", "-Ywarn-unused:_,-implicits"),
   Test / console / scalacOptions := (Compile / console / scalacOptions).value,
-
-  scalafmtOnCompile := true,
-
-  // We can't use Scalafix in Scala 3 yet.
-  libraryDependencies ++= forScalaVersions {
-    case (2, _) => List(compilerPlugin(scalafixSemanticdb))
-    case _ => List.empty
-  }.value,
-  scalafixOnCompile := forScalaVersions { case (2, _) => true; case _ => false }.value,
-  scalafixCheckAll := scalafixAll.toTask(" --check").value,
 
   autoAPIMappings := true,
 
@@ -175,31 +198,3 @@ lazy val lintFlags = forScalaVersions {
 
   case (maj, min) => throw new Exception(s"Unknown Scala version $maj.$min")
 }
-
-// Use the same Scala 2.12 version in the root project as in subprojects
-scalaVersion := scala212
-
-// do not publish the root project
-publish / skip := true
-
-releaseCrossBuild := true
-releaseTagComment := s"Release ${(ThisBuild / version).value}"
-releaseCommitMessage := s"Set version to ${(ThisBuild / version).value}"
-releaseNextCommitMessage := s"Set version to ${(ThisBuild / version).value}"
-
-// redefine the release process due to https://github.com/sbt/sbt-release/issues/184
-// and to append `sonatypeReleaseAll`
-releaseProcess := Seq[ReleaseStep](
-  checkSnapshotDependencies,
-  inquireVersions,
-  runClean,
-  runTest,
-  setReleaseVersion,
-  commitReleaseVersion,
-  tagRelease,
-  releaseStepCommandAndRemaining("+publishSigned"),
-  releaseStepCommand("sonatypeBundleRelease"),
-  setNextVersion,
-  commitNextVersion,
-  pushChanges
-)
